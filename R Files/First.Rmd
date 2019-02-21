@@ -1,0 +1,628 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(readr)
+library(mapdata)
+library(ggplot2)
+library(stringr)
+library(dplyr)
+library(lubridate)
+library(xts)
+library(highcharter)
+library(ggforce)
+```
+
+
+```{r}
+ratings <- read_csv("ratings.csv")
+movies <- read_csv("movies.csv")
+
+
+Donations <- read_csv("Donations.csv")
+Projects <- read_csv("Projects.csv")
+
+Schools <- read_csv("Schools.csv")
+Teachers <- read_csv("Teachers.csv")
+Resources <- read.csv("Resources.csv")
+Donors <- read_csv("Donors.csv")
+
+
+Donations$Donation.Received.Date <- as.POSIXct(Donations$`Donation Received Date`)
+Donations$Donation.Received.Year <-year(Donations$Donation.Received.Date)
+Donations$Donation.Received.Month <-month(Donations$Donation.Received.Date)
+Donations$Donation.Received.Day <-day(Donations$Donation.Received.Date)
+# Donations$Donation.Received.Month <-month.abb[Donations$Donation.Received.Month]
+# Donations$Donation.Received.Month <-factor(Donations$Donation.Received.Month,levels=month.abb)
+
+```
+
+```{r}
+Genres <- as.data.frame(movies$genres, stringsAsFactors=FALSE)
+library(data.table)
+Genres2 <- as.data.frame(tstrsplit(Genres[,1], '[|]', type.convert=TRUE), stringsAsFactors=FALSE)
+colnames(Genres2) <- c(1:7)
+
+Genre_list <- c("Action", "Adventure", "Animation", "Children", "Comedy", "Crime","Documentary", "Drama", "Fantasy","Film-Noir", "Horror", "Musical", "Mystery","Romance","Sci-Fi", "Thriller", "War", "Western")
+
+Genre_matrix <- matrix(0,8571,18) #empty matrix
+Genre_matrix[1,] <- Genre_list #set first row to genre list
+colnames(Genre_matrix) <- Genre_list #set column names to genre list
+
+#iterate through matrix
+for (i in 1:nrow(Genres2)) {
+ for (c in 1:ncol(Genres2)) {
+ Genmat_col = which(Genre_matrix[1,] == Genres2[i,c])
+ Genre_matrix[i+1,Genmat_col] <- 1
+ }
+}
+
+#convert into dataframe
+Genre_matrix2 <- as.data.frame(Genre_matrix[-1,], stringsAsFactors=FALSE) #remove first row, which was the genre list
+for (c in 1:ncol(Genre_matrix2)) {
+  Genre_matrix2[,c] <- as.integer(Genre_matrix2[,c])
+} #convert from characters to integers
+
+
+```
+
+
+```{r}
+
+Projects_1 <- sample_n(Projects,1000)
+Projects_1 <- Projects_1 %>% select(`Project ID`,`Project Title`,`Project Subject Category Tree`)
+
+genres <- as.data.frame(Projects_1$`Project Subject Category Tree`, stringsAsFactors=FALSE)
+library(data.table)
+
+genres2 <- as.data.frame(tstrsplit(genres[,1], '[,]', type.convert=TRUE), stringsAsFactors=FALSE)
+
+colnames(genres2) <- c(1:2)
+
+
+genre_list <- c("Literacy & Language", "Applied Learning", "Music & The Arts", "Special Needs", "History & Civics","Health & Sports", "Math & Science", "Warmth","Care & Hunger")
+
+genre_matrix <- matrix(0,8571,9) #empty matrix
+genre_matrix[1,] <- genre_list #set first row to genre list
+colnames(genre_matrix) <- genre_list #set column names to genre list
+
+#iterate through matrix
+for (i in 1:nrow(genres2)) {
+ for (c in 1:ncol(genres2)) {
+ genmat_col = which(genre_matrix[1,] == genres2[i,c])
+ genre_matrix[i+1,genmat_col] <- 1
+ }
+}
+
+#convert into dataframe
+genre_matrix2 <- as.data.frame(genre_matrix[-1,], stringsAsFactors=FALSE) #remove first row, which was the genre list
+for (c in 1:ncol(genre_matrix2)) {
+  genre_matrix2[,c] <- as.integer(genre_matrix2[,c])
+} #convert from characters to integers
+
+ # all <- merge(x=Projects_1,y=Donations, by = "Project ID",all = TRUE)
+
+```
+
+
+```{r}
+Donations_1 <- sample_n(Donations,1000)
+Donations_1 <- Donations_1 %>% select(`Project ID`,`Donor ID`)
+Donations_1$ratings <-1
+
+Donations_2 <- dcast(Donations_1, `Project ID`~`Donor ID`, value.var = "ratings", na.rm=FALSE)
+for (i in 1:ncol(Donations_2)){
+  Donations_2[which(is.na(Donations_2[,i]) == TRUE),i] <- 0
+}
+Donations_2 = Donations_2[,-1]
+
+```
+
+
+
+```{r}
+#Remove rows that are not rated from movies dataset
+projectIds <- length(unique(Projects_1$`Project ID`)) #1000
+donationIds <- length(unique(Donations_1$`Project ID`)) #999
+project2 <- Donations_1[-which((projectIds %in% donationIds) == FALSE),]
+rownames(project2) <- NULL
+#Remove rows that are not rated from genre_matrix2
+genre_matrix3 <- genre_matrix2[-which((projectIds %in% donationIds) == FALSE),]
+rownames(genre_matrix3) <- NULL
+
+```
+
+```{r}
+#Calculate dot product for User Profiles
+result = matrix(0,9,973)
+for (c in 1:ncol(Donations_2)){
+  for (i in 1:ncol(genre_matrix3)){
+    result[i,c] <- sum((genre_matrix3[,i]) * (Donations_2[,c]))
+  }
+}
+
+#Convert to Binary scale
+for (i in 1:nrow(result)){
+  if (result[i] < 0){
+    result[i] <- 0
+  }
+  else {
+    result[i] <- 1
+  }
+}
+```
+
+
+```{r}
+result2 <- result[1,] #First user's profile
+sim_mat <- rbind.data.frame(result2, genre_matrix3)
+sim_mat <- data.frame(lapply(sim_mat,function(x){as.integer(x)})) #convert data to type integer
+
+#Calculate Jaccard distance between user profile and all movies
+library(proxy)
+sim_results <- dist(sim_mat, method = "Jaccard")
+sim_results <- as.data.frame(as.matrix(sim_results[1:997]))
+rows <- which(sim_results == min(sim_results))
+#Recommended movies
+Projects[rows,2]
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+library(reshape2)
+
+Donations_1 <- sample_n(Donations,1000)
+
+all <- merge(x=Projects,y=Donations_1, by = "Project ID",all = TRUE)
+
+
+
+n <- unique(all$`Project Subject Subcategory Tree` )
+m <- unique(all$ `Donor ID`)
+
+test <- data.frame(n,m)
+
+
+
+projdon <- sample_n(Donations, 10000)
+projdon = projdon %>%    
+             filter(!is.na(`Donor ID`)) 
+
+projdon =   projdon %>%
+          count(`Donor ID`,`Project ID`) %>%
+          arrange(desc(n))
+          
+ head(projdon)
+
+#Create ratings matrix. Rows = userId, Columns = movieId
+ratingmat <- dcast(Donations_1, `Project ID`~`Donor ID`, value.var = "ratings", na.rm=FALSE)
+ratingmat <- as.matrix(ratingmat[,-1]) #remove userIds
+
+# library(reshape2)
+# #Create ratings matrix. Rows = userId, Columns = movieId
+# ratingmat <- dcast(ratings, userId~movieId, value.var = "rating", na.rm=FALSE)
+# ratingmat <- as.matrix(ratingmat[,-1]) #remove userIds
+
+library(recommenderlab)
+#Convert rating matrix into a recommenderlab sparse matrix
+ratingmat <- as(ratingmat, "realRatingMatrix")
+ 
+#Normalize the data
+ratingmat_norm <- normalize(ratingmat)
+ 
+#Create Recommender Model. "UBCF" stands for User-Based Collaborative Filtering
+recommender_model <- Recommender(ratingmat_norm, method = "UBCF", param=list(method="Cosine",nn=30))
+recom <- predict(recommender_model, ratingmat[10], n=10) #Obtain top 10 recommendations for 1st user in dataset
+recom_list <- as(recom, "list") #convert recommenderlab object to readable list
+ 
+#Obtain recommendations
+recom_result <- matrix(0,10)
+for (i in c(1:10)){
+ recom_result[i] <- Donations_1[as.integer(recom_list[[1]][i]),2]
+}
+
+recom_result
+```
+
+```{r}
+evaluation_scheme <- evaluationScheme(ratingmat, method="cross-validation", k=5, given=3, goodRating=5) #k=5 meaning a 5-fold cross validation. given=3 meaning a Given-3 protocol
+evaluation_results <- evaluate(evaluation_scheme, method="UBCF", n=c(1,3,5,10,15,20))
+eval_results <- getConfusionMatrix(evaluation_results)[[1]]
+```
+
+
+```{r}
+us <- map_data("state")
+
+state2abb <- tibble(
+  region = state.name,
+  state = state.name
+)
+
+state_center <- tibble(
+  name = state.abb,
+  region = state.name,
+  lat = state.center$y,
+  long = state.center$x
+) %>%
+  filter(name != "HI" & name != "AK")
+
+proj_state <- Schools %>%
+  count(`School State`) %>%
+  mutate(state = as.character(`School State`),
+         logn = log10(n)) %>%
+  left_join(state2abb, by = "state") %>%
+  mutate(region = str_to_lower(region))
+
+us %>%
+  left_join(proj_state, by = "region") %>%
+  ggplot() + 
+  geom_polygon(aes(x = long, y = lat, fill = n, group = group), color = "white") +
+  geom_text(data=state_center, aes(long, lat, label = name), size=4, color = "grey30") +
+  coord_fixed(1.3) +
+  scale_fill_continuous(low='lightgreen', high='darkgreen', guide='colorbar') +
+  labs(fill = 'Total Projects') +
+  theme_void() +
+  ggtitle("Number of Schools per US state")
+
+```
+
+
+```{r}
+Schools %>%
+  count(`School State`) %>%
+  ggplot(aes(reorder(`School State`, -n, FUN = min), n, fill = `School State`)) +
+  geom_col() +
+  scale_y_log10(breaks = c(10, 100, 1000)) +
+  theme(legend.position = "none",  axis.text.x  = element_text(angle=60, hjust=1, vjust=0.9)) +
+  labs(x = "State") +
+  ggtitle("Number of Schools per US state (log axis)")
+```
+
+
+```{r}
+foo <- Schools %>%
+    filter(!is.na(`School Metro Type`)) %>%
+  group_by(`School Metro Type`) %>%
+  count()
+
+foo %>%
+  mutate(percentage = str_c(as.character(round(n/sum(foo$n)*100,1)), "%")) %>%
+  ggplot(aes(`School Metro Type`, n, fill = `School Metro Type`)) +
+  geom_col() +
+  geom_label(aes(label = percentage), position = position_dodge(width = 1)) +
+  labs(x = "Type of Metro") +
+  theme(legend.position = "none")
+```
+
+
+```{r}
+Schools %>%
+  rename(SchoolCity = `School City`) %>%
+  filter(!is.na(SchoolCity)) %>%
+  group_by(SchoolCity) %>%
+  summarise(Count = n()) %>%
+  arrange(desc(Count)) %>%
+  ungroup() %>%
+  mutate(SchoolCity = reorder(SchoolCity,Count)) %>%
+  head(10) %>%
+  
+  ggplot(aes(x = SchoolCity,y = Count)) +
+  geom_bar(stat='identity',fill= "lightBlue") +
+  geom_text(aes(x = SchoolCity, y = 1, label = paste0("( ",round(Count),"  )",sep="")),
+            hjust=0, vjust=.5, size = 4, colour = 'black',
+            fontface = 'bold') +
+  labs(x = 'SchoolCity', 
+       y = 'Count', 
+       title = 'SchoolCity and Count') +
+  coord_flip() +
+  theme_bw()
+```
+
+```{r}
+Schools %>%
+  rename(SchoolCounty = `School County`) %>%
+  filter(!is.na(SchoolCounty)) %>%
+  group_by(SchoolCounty) %>%
+  summarise(Count = n()) %>%
+  arrange(desc(Count)) %>%
+  ungroup() %>%
+  mutate(SchoolCounty = reorder(SchoolCounty,Count)) %>%
+  head(10) %>%
+  
+  ggplot(aes(x = SchoolCounty,y = Count)) +
+  geom_bar(stat='identity',fill= "LightGreen") +
+  geom_text(aes(x = SchoolCounty, y = 1, label = paste0("( ",round(Count),"  )",sep="")),
+            hjust=0, vjust=.5, size = 4, colour = 'black',
+            fontface = 'bold') +
+  labs(x = 'SchoolCounty', 
+       y = 'Count', 
+       title = 'SchoolCounty and Count') +
+  coord_flip() +
+  theme_bw()
+```
+
+```{r}
+ Projects %>%
+  count(`Project Grade Level Category`) %>%
+  top_n(10, n) %>%
+  ggplot(aes(reorder(`Project Grade Level Category`, n, FUN = min), n, fill = `Project Grade Level Category`)) +
+  geom_col() +
+  labs(x = "Project Grade level Categories") +
+  
+  theme(legend.position = "none")
+
+```
+
+```{r}
+p1 <- Projects %>%
+  ggplot(aes(`Teacher Project Posted Sequence`)) +
+  geom_histogram(bins = 100, fill = "darkgreen") +
+  labs(x = "Number of previous Proposals per Teacher ID") +
+  scale_y_log10()
+p1
+```
+
+```{r}
+foo <- Projects %>%
+    filter(!is.na(`Project Type`)) %>%
+  group_by(`Project Type`) %>%
+  count()
+
+p2<- foo %>%
+  mutate(percentage = str_c(as.character(round(n/sum(foo$n)*100,1)), "%")) %>%
+  ggplot(aes(`Project Type`, n, fill = `Project Type`)) +
+  geom_col() +
+  geom_label(aes(label = percentage), position = position_dodge(width = 1)) +
+  labs(x = "Project Type") +
+  theme(legend.position = "none")
+p2
+```
+
+```{r}
+p3 <- Projects %>%
+  count(`Project Subject Category Tree`) %>%
+  top_n(10, n) %>%
+  ggplot(aes(reorder(`Project Subject Category Tree`, n, FUN = min), n, fill = `Project Subject Category Tree`)) +
+  geom_col() +
+  labs(x = "Subject Categories") +
+  
+  coord_flip() +
+  theme(legend.position = "none")
+p3
+```
+
+```{r}
+p4<-Projects %>%
+  count(`Project Subject Subcategory Tree`) %>%
+  top_n(10, n) %>%
+  ggplot(aes(reorder(`Project Subject Subcategory Tree`, n, FUN = min), n, fill = `Project Subject Subcategory Tree`)) +
+  geom_col() +
+  labs(x = "Subject Subcategory") +
+  coord_flip() +
+  theme(legend.position = "none")
+
+p4
+
+```
+
+
+
+```{r}
+foo <- Projects %>%
+    filter(!is.na(`Project Resource Category`)) %>%
+  group_by(`Project Resource Category`) %>%
+  count()
+
+foo %>%
+  mutate(percentage = str_c(as.character(round(n/sum(foo$n)*100,1)), "%")) %>%
+  arrange(desc(percentage)) %>%
+  ggplot(aes(`Project Resource Category`, n, fill = `Project Resource Category`)) +
+  geom_col() +
+  geom_label(aes(label = percentage), position = position_dodge(width = 1)) +
+  labs(x = "Project Type") +
+  
+  coord_flip() +
+  theme(legend.position = "none")
+```
+```{r}
+foo <- Projects %>%
+    filter(!is.na(`Project Cost`)) %>%
+  group_by(`Project Cost`) %>%
+  count()
+
+p2<- foo %>%
+  mutate(percentage = str_c(as.character(round(n/sum(foo$n)*100,1)), "%")) %>%
+  ggplot(aes(`Project Cost`, n, fill = `Project Cost`)) +
+  geom_col() +
+  geom_label(aes(label = percentage), position = position_dodge(width = 1)) +
+  labs(x = "Project Cost") +
+  theme(legend.position = "none")
+p2
+
+
+```
+
+
+
+
+
+
+```{r}
+foo <- Donations %>%
+    filter(!is.na(`Donation Included Optional Donation`)) %>%
+  group_by(`Donation Included Optional Donation`) %>%
+  count()
+
+p2<- foo %>%
+  mutate(percentage = str_c(as.character(round(n/sum(foo$n)*100,1)), "%")) %>%
+  ggplot(aes(`Donation Included Optional Donation`, n, fill = `Donation Included Optional Donation`)) +
+  geom_col() +
+  geom_label(aes(label = percentage), position = position_dodge(width = 1)) +
+  labs(x = "`Donation Included Optional Donation`") +
+  theme(legend.position = "none")
+p2
+```
+
+```{r}
+Donations <- Donations %>%
+  rename(DonationAmount = DonationAmount )
+
+Donations %>%
+  filter(DonationAmount <= 250) %>%
+  ggplot(aes(x = DonationAmount)) +
+  geom_histogram(bins = 30,fill = "Dark Green") +
+  labs(x= 'Donation Amount',y = 'Count', title = paste("Distribution of", ' Donation Amount ')) +
+  theme_bw()
+
+```
+
+```{r}
+p1 <- Donations %>%
+  ggplot(aes(`Donor Cart Sequence`)) +
+  geom_histogram(bins = 100, fill = "darkgreen") +
+  labs(x = "`Donor Cart Sequence`") +
+  scale_y_log10()
+p1
+```
+
+
+```{r}
+countries_continents = countries_continents %>%
+  select(name,Continent)
+
+mpi_national_continent = inner_join(mpi_national,countries_continents,by =c('Country'= 'name'))
+
+poor_countries_rural <- mpi_national_continent %>%
+  filter(Continent == 'AS') %>%
+  rename(MPIRural = `MPI Rural`) %>%
+  arrange(desc(MPIRural)) %>%
+  head(15) %>%
+  select(Country,MPIRural)
+
+treemap(poor_countries_rural, 
+        index="Country", 
+        vSize = "MPIRural",  
+        title="Poorest Countries Rural Perspective", 
+        palette = "RdBu",
+        fontsize.title = 14 
+)
+```
+
+```{r}
+
+# Donations$Donation.Received.Date <-as.Date(Donations$`Donation Received Date`)
+
+by_Date_Donation_Count <-Donations %>%group_by(Donation.Received.Date) %>%summarise(Total=n())
+
+
+
+tseries_donation_cnt <- xts(by_Date_Donation_Count$Total,order.by=by_Date_Donation_Count$Donation.Received.Date)
+
+Donation_by_Year_2012 <-Donations %>%
+                        filter(Donation.Received.Year=="2012") %>%
+                        group_by(Donation.Received.Date) %>%
+                        summarise(Total=n())
+
+
+Donation_by_Year_2013 <-Donations %>%
+                        filter(Donation.Received.Year=="2013") %>%
+                        group_by(Donation.Received.Date) %>%
+                        summarise(Total=n())
+
+Donation_by_Year_2014 <-Donations %>%
+                        filter(Donation.Received.Year=="2014") %>%
+                        group_by(Donation.Received.Date) %>%
+                        summarise(Total=n())
+
+Donation_by_Year_2015 <-Donations %>%
+  filter(Donation.Received.Year=="2015") %>%
+  group_by(Donation.Received.Date) %>%
+  summarise(Total=n())
+
+Donation_by_Year_2016 <-Donations %>%
+  filter(Donation.Received.Year=="2016") %>%
+  group_by(Donation.Received.Date) %>%
+  summarise(Total=n())
+
+Donation_by_Year_2017 <-Donations %>%
+  filter(Donation.Received.Year=="2017") %>%
+  group_by(Donation.Received.Date) %>%
+  summarise(Total=n())
+
+
+
+tseries_donation_2012_cnt <-xts(Donation_by_Year_2012$Total,order.by=Donation_by_Year_2012$Donation.Received.Date)
+tseries_donation_2013_cnt <-xts(Donation_by_Year_2013$Total,order.by=Donation_by_Year_2013$Donation.Received.Date)
+tseries_donation_2014_cnt <-xts(Donation_by_Year_2014$Total,order.by=Donation_by_Year_2014$Donation.Received.Date)
+tseries_donation_2015_cnt <-xts(Donation_by_Year_2015$Total,order.by=Donation_by_Year_2015$Donation.Received.Date)
+tseries_donation_2016_cnt <-xts(Donation_by_Year_2016$Total,order.by=Donation_by_Year_2016$Donation.Received.Date)
+tseries_donation_2017_cnt <-xts(Donation_by_Year_2017$Total,order.by=Donation_by_Year_2017$Donation.Received.Date)
+highchart(type="stock") %>%
+hc_add_series(tseries_donation_2012_cnt,name="Total Donations 2012") %>%
+  hc_add_series(tseries_donation_2013_cnt,name="Total Donations 2013") %>%
+  hc_add_series(tseries_donation_2014_cnt,name="Total Donations 2014") %>%
+  hc_add_series(tseries_donation_2015_cnt,name="Total Donations 2015") %>%
+  hc_add_series(tseries_donation_2016_cnt,name="Total Donations 2016") %>%
+  hc_add_series(tseries_donation_2017_cnt,name="Total Donations 2017") %>%
+  hc_add_theme(hc_theme_darkunica()) %>%
+  hc_title(text="Time Series Plot ",style = list(color = "DarkBlue", fontWeight = "bold"))
+
+
+
+```
+
+```{r}
+Donations %>% 
+  group_by(Donation.Received.Year) %>%
+  summarise(Total=n())%>%
+  hchart(type="column",hcaes(x=Donation.Received.Year,y=Total))%>%
+  hc_title(text="No of Donations-Year Wise")
+```
+
+```{r}
+p1 <- Donations %>%
+  count(Donation.Received.Date) %>%
+  ggplot(aes(Donation.Received.Date, n)) +
+  geom_line(col = "darkgreen") +
+  labs(x = "Date", y = "Submitted Proposals") +
+  facet_zoom(x = (Donation.Received.Date > ymd("20171110") & Donation.Received.Date < ymd("20171130")), zoom.size = 0.5)
+p1
+```
+
+```{r}
+p2 <- Donations %>%
+  ggplot(aes(Donation.Received.Month, fill = Donation.Received.Month)) +
+  geom_bar() +
+  labs(x = "Month") +
+  theme(legend.position = "none",  axis.text.x = element_text(angle=45, hjust=1, vjust=0.9))
+p2
+
+```
+
+```{r}
+p3 <- Donations %>%
+  ggplot(aes(Donation.Received.Day, fill = Donation.Received.Day)) +
+  geom_bar() +
+  labs(x = "Day of the Week") +
+  theme(legend.position = "none")
+p3
+```
+

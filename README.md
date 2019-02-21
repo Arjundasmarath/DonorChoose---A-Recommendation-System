@@ -8,3 +8,5 @@ Performance - How well does the solution match donors to project requests to whi
 Content Based Filtering Like the name suggests, the Content-based Filtering approach involves analyzing an item a user interacted with, and giving recommendations that are similar in content to that item. Content, in this case, refers to a set of attributes/features that describes your item. For a Project recommendation engine, a content-based approach would be to recommend Projects that are of highest similarity based on its features, such as Title of project,Type of Project, Subjects, etc.
 The assumption here is that users have preferences for a certain type of product, so we try to recommend a similar product to what the user has expressed liking for. Also, the goal here is to provide alternatives or substitutes to the item that was viewed.
 To build a simple content-based recommender engine, a user profile is necessary to determine what a user is inclined to prefer, and can be constructed based on the user’s preferences or viewing behavior.
+
+https://www.kaggle.com/arjundas/donorschoose-with-content-based-filtering-approach
